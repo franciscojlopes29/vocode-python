@@ -8,10 +8,11 @@ import wave
 import aiohttp
 from opentelemetry.trace import Span
 from pydub import AudioSegment
+from langchain.docstore.document import Document
 
 from vocode import getenv
 from vocode.streaming.synthesizer.base_synthesizer import (
-    BaseSynthesizer,
+    # BaseSynthesizer, # this wont reflect the changes in the base_synthesizer.py when editing
     SynthesisResult,
     FILLER_PHRASES,
     FILLER_AUDIO_PATH,
@@ -29,11 +30,12 @@ from vocode.streaming.models.message import BaseMessage
 from vocode.streaming.utils import convert_wav
 from vocode.streaming.utils.mp3_helper import decode_mp3
 from vocode.streaming.synthesizer.miniaudio_worker import MiniaudioWorker
-
+from .base_synthesizer import BaseSynthesizer
 
 ADAM_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
 ELEVEN_LABS_BASE_URL = "https://api.elevenlabs.io/v1/"
 
+SIMILARITY_THRESHOLD = 0.9
 
 class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
     def __init__(
@@ -57,6 +59,16 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         self.words_per_minute = 150
         self.experimental_streaming = synthesizer_config.experimental_streaming
         self.logger = logger or logging.getLogger(__name__)
+        self.vector_db = None
+        self.vector_db_cache = {}
+        self.s3_wrapper = None
+
+        if synthesizer_config.index_config:
+            from vocode.streaming.vector_db.pinecone import PineconeDB
+            self.vector_db = PineconeDB(synthesizer_config.index_config.pinecone_config)
+            self.s3_wrapper = synthesizer_config.index_config.s3_wrapper
+            # TODO: cache vector_db results
+
 
     async def get_phrase_filler_audios(self) -> Dict[str,List[FillerAudio]]:
         filler_phrase_audios = {
@@ -142,6 +154,47 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         chunk_size: int,
         bot_sentiment: Optional[BotSentiment] = None,
     ) -> SynthesisResult:
+        
+        # Since the index is used to reduce latency during streaming, it will always be used when `experimental_streaming=True`
+        if self.vector_db and self.experimental_streaming:
+
+            if self.vector_db_cache:
+                # TODO: search in vector_db_cache so we do not have to make api call
+                # search in vector_db_cache
+                # return result if found
+                pass
+
+            index_filter = None
+            if self.stability is not None and self.similarity_boost is not None:
+                index_filter = {
+                    "stability": self.stability,
+                    "similarity_boost": self.similarity_boost
+                }
+            result_embeds: List[Tuple[Document, float]] = await self.vector_db.similarity_search_with_score(
+                query=message.text,
+                filter=index_filter
+                )
+            if result_embeds:
+                doc, score = result_embeds[0] # top result
+                if score > SIMILARITY_THRESHOLD:
+                    self.logger.debug(f"Found similar synthesized text in vector_db: {doc.metadata}")
+                    object_id = doc.metadata.get("object_key")
+                    audio_data = self.s3_wrapper.load_from_s3(object_id)
+                    
+                    # TODO: cache result
+
+                    # If successful, return result. Otherwise, synthesize below.
+                    return SynthesisResult(
+                        self.stream_mp3_audio_from_bytes(
+                                response, chunk_size
+                        ),
+                        lambda seconds: self.get_message_cutoff_from_voice_speed(
+                            message, seconds, self.words_per_minute
+                        ),
+                    )
+
+        # else synthesize
+
         voice = self.elevenlabs.Voice(voice_id=self.voice_id)
         if self.stability is not None and self.similarity_boost is not None:
             voice.settings = self.elevenlabs.VoiceSettings(
