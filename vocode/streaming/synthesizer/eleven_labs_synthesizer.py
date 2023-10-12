@@ -30,12 +30,14 @@ from vocode.streaming.models.message import BaseMessage
 from vocode.streaming.utils import convert_wav
 from vocode.streaming.utils.mp3_helper import decode_mp3
 from vocode.streaming.synthesizer.miniaudio_worker import MiniaudioWorker
-from .base_synthesizer import BaseSynthesizer
+from vocode.streaming.synthesizer.base_synthesizer import BaseSynthesizer
+
+from vocode.streaming.utils.aws_s3 import load_from_s3
 
 ADAM_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
 ELEVEN_LABS_BASE_URL = "https://api.elevenlabs.io/v1/"
 
-SIMILARITY_THRESHOLD = 0.9
+SIMILARITY_THRESHOLD = 0.85
 
 class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
     def __init__(
@@ -61,12 +63,12 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         self.logger = logger or logging.getLogger(__name__)
         self.vector_db = None
         self.vector_db_cache = {}
-        self.s3_wrapper = None
+        self.bucket_name = None
 
         if synthesizer_config.index_config:
             from vocode.streaming.vector_db.pinecone import PineconeDB
             self.vector_db = PineconeDB(synthesizer_config.index_config.pinecone_config)
-            self.s3_wrapper = synthesizer_config.index_config.s3_wrapper
+            self.bucket_name = synthesizer_config.index_config.bucket_name
             # TODO: cache vector_db results
 
 
@@ -155,8 +157,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         bot_sentiment: Optional[BotSentiment] = None,
     ) -> SynthesisResult:
         
-        # Since the index is used to reduce latency during streaming, it will always be used when `experimental_streaming=True`
-        if self.vector_db and self.experimental_streaming:
+        if self.vector_db and self.bucket_name:
 
             if self.vector_db_cache:
                 # TODO: search in vector_db_cache so we do not have to make api call
@@ -179,19 +180,35 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                 if score > SIMILARITY_THRESHOLD:
                     self.logger.debug(f"Found similar synthesized text in vector_db: {doc.metadata}")
                     object_id = doc.metadata.get("object_key")
-                    audio_data = self.s3_wrapper.load_from_s3(object_id)
+                    text_message = doc.page_content
+                    self.logger.debug(f"Found similar synthesized text in vector_db: {text_message}")
+                    self.logger.debug(f"Original text: {message.text}")
+                    try:
+                        audio_data = load_from_s3(
+                            bucket_name=self.bucket_name, 
+                            object_key=object_id
+                        )
+                    except Exception as e:
+                        self.logger.debug(f"Error loading object from S3: {str(e)}")
+                        audio_data = None
                     
-                    # TODO: cache result
+                    # assert audio_data is not None
+                    # assert type(audio_data) == bytes
 
+                    output_bytes_io = decode_mp3(audio_data)
+                    
                     # If successful, return result. Otherwise, synthesize below.
-                    return SynthesisResult(
-                        self.stream_mp3_audio_from_bytes(
-                                response, chunk_size
-                        ),
-                        lambda seconds: self.get_message_cutoff_from_voice_speed(
-                            message, seconds, self.words_per_minute
-                        ),
+
+                    result = self.create_synthesis_result_from_wav(
+                        synthesizer_config=self.synthesizer_config,
+                        file=output_bytes_io,
+                        message=BaseMessage(text=text_message),
+                        chunk_size=chunk_size,
                     )
+                    
+                    # TODO: cache result in self.vector_db_cache
+
+                    return result
 
         # else synthesize
 
