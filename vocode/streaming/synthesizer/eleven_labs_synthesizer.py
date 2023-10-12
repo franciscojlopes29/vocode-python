@@ -169,7 +169,8 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             if self.stability is not None and self.similarity_boost is not None:
                 index_filter = {
                     "stability": self.stability,
-                    "similarity_boost": self.similarity_boost
+                    "similarity_boost": self.similarity_boost,
+                    "voice_id": self.voice_id
                 }
             result_embeds: List[Tuple[Document, float]] = await self.vector_db.similarity_search_with_score(
                 query=message.text,
