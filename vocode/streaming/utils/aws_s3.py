@@ -1,13 +1,22 @@
 import boto3
+from pydantic import validator
 
-class S3Wrapper:
-    def __init__(self, bucket_name):
-        self.bucket_name = bucket_name
-        self.s3 = boto3.client('s3')
+from vocode.streaming.models.model import BaseModel
 
+class S3Wrapper(BaseModel):
+    bucket_name: str
+    _s3 = boto3.client('s3')
+
+    @validator("bucket_name")
+    def bucket_name_must_not_be_empty(cls, v):
+        if len(v) == 0:
+            raise ValueError("must have a bucket name")
+        return v
+
+    @classmethod
     def load_from_s3(self, object_key):
         try:
-            response = self.s3.get_object(
+            response = self._s3.get_object(
                 Bucket=self.bucket_name,
                 Key=object_key,
             )
@@ -16,9 +25,10 @@ class S3Wrapper:
             print(f"Error loading object from S3: {str(e)}")
             return None
 
+    @classmethod
     def upload_to_s3(self, object_key, data, content_type='application/octet-stream'):
         try:
-            self.s3.put_object(
+            self._s3.put_object(
                 Bucket=self.bucket_name,
                 Key=object_key,
                 Body=data,
@@ -27,9 +37,10 @@ class S3Wrapper:
         except Exception as e:
             print(f"Error uploading object to S3: {str(e)}")
 
+    @classmethod
     def delete_from_s3(self, object_key):
         try:
-            self.s3.delete_object(
+            self._s3.delete_object(
                 Bucket=self.bucket_name,
                 Key=object_key
             )
@@ -38,7 +49,7 @@ class S3Wrapper:
 
 # Example usage:
 if __name__ == "__main__":
-    s3_wrapper = S3Wrapper("your-bucket-name")
+    s3_wrapper = S3Wrapper(bucket_name="my-bucket-name")
     
     # Load an object from S3
     data = s3_wrapper.load_from_s3("example-object-key")
