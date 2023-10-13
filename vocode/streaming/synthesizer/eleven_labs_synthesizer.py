@@ -37,7 +37,7 @@ from vocode.streaming.utils.aws_s3 import load_from_s3
 ADAM_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
 ELEVEN_LABS_BASE_URL = "https://api.elevenlabs.io/v1/"
 
-SIMILARITY_THRESHOLD = 0.85
+SIMILARITY_THRESHOLD = 0.9
 
 class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
     def __init__(
@@ -123,9 +123,6 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                             raise Exception(f"ElevenLabs API returned {response.status} status code")
 
                         audio_data = await response.read()  
-                        # offset = self.synthesizer_config.sampling_rate * self.OFFSET_MS // 1000
-                        # audio_data = audio_data[offset:]
-
                         audio_segment: AudioSegment = AudioSegment.from_mp3(
                             io.BytesIO(audio_data)  # type: ignore
                         )         
@@ -155,10 +152,10 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         message: BaseMessage,
         chunk_size: int,
         bot_sentiment: Optional[BotSentiment] = None,
-    ) -> SynthesisResult:
+        return_tuple: Optional[bool] = False
+    ) -> Union[SynthesisResult, Tuple[SynthesisResult, BaseMessage]]:
         
         if self.vector_db and self.bucket_name:
-
             if self.vector_db_cache:
                 # TODO: search in vector_db_cache so we do not have to make api call
                 # search in vector_db_cache
@@ -208,8 +205,10 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                     )
                     
                     # TODO: cache result in self.vector_db_cache
-
-                    return result
+                    if return_tuple:
+                        return result, BaseMessage(text=text_message)
+                    else:
+                        return result
 
         # else synthesize
 
@@ -244,7 +243,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         if not response.ok:
             raise Exception(f"ElevenLabs API returned {response.status} status code")
         if self.experimental_streaming:
-            return SynthesisResult(
+            result = SynthesisResult(
                 self.experimental_mp3_streaming_output_generator(
                     response, chunk_size, create_speech_span
                 ),  # should be wav
@@ -252,6 +251,10 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                     message, seconds, self.words_per_minute
                 ),
             )
+            if return_tuple:
+                return result, message
+            else: 
+                return result
         else:
             audio_data = await response.read()
             create_speech_span.end()
@@ -267,8 +270,10 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                 chunk_size=chunk_size,
             )
             convert_span.end()
-
-            return result
+            if return_tuple:
+                return result, message
+            else: 
+                return result
 
     def make_url(self):
         url = ELEVEN_LABS_BASE_URL + f"text-to-speech/{self.voice_id}"
