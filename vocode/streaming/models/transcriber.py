@@ -112,6 +112,7 @@ class DeepgramTranscriberConfig(TranscriberConfig, type=TranscriberType.DEEPGRAM
     version: Optional[str] = None
     filler_words: Optional[str] = None
     keywords: Optional[list] = None
+    deepgram_endpointing: Optional[int] = None
 
 
 class GladiaTranscriberConfig(TranscriberConfig, type=TranscriberType.GLADIA.value):
@@ -126,6 +127,7 @@ class GoogleTranscriberConfig(TranscriberConfig, type=TranscriberType.GOOGLE.val
 class AzureTranscriberConfig(TranscriberConfig, type=TranscriberType.AZURE.value):
     language: str = AZURE_DEFAULT_LANGUAGE
     candidate_languages: Optional[List[str]] = None
+    azure_endpointing: Optional[int] = None
 
 
 class AssemblyAITranscriberConfig(
