@@ -42,6 +42,7 @@ class FillerAudioConfig(BaseModel):
     silence_threshold_seconds: float = FILLER_AUDIO_DEFAULT_SILENCE_THRESHOLD_SECONDS
     use_phrases: bool = True
     use_typing_noise: bool = False
+    probability: float = 0.5
 
     @validator("use_typing_noise")
     def typing_noise_excludes_phrases(cls, v, values):
@@ -64,6 +65,7 @@ class AzureOpenAIConfig(BaseModel):
 
 class AgentConfig(TypedModel, type=AgentType.BASE.value):
     initial_message: Optional[BaseMessage] = None
+    interrupt_initial_message: Optional[bool] = False
     generate_responses: bool = True
     allowed_idle_time_seconds: Optional[float] = None
     allow_agent_to_be_cut_off: bool = True
