@@ -56,6 +56,7 @@ class FillerAudioConfig(BaseModel):
 
 class FollowUpAudioConfig(BaseModel):
     silence_threshold_seconds: float = FOLLOW_UP_DEFAULT_SILENCE_THRESHOLD_SECONDS
+    follow_up_phrases: Optional[List[BaseMessage]] = None
 
 
 class WebhookConfig(BaseModel):
@@ -107,7 +108,8 @@ class ChatGPTAgentConfig(AgentConfig, type=AgentType.CHAT_GPT.value):
     add_disfluencies: bool = False
     azure_params: Optional[AzureOpenAIConfig] = None
     vector_db_config: Optional[VectorDBConfig] = None
-
+    character_replacement_map: Optional[dict] = None
+    timeout_seconds: Optional[float] = None
 
 class ChatAnthropicAgentConfig(AgentConfig, type=AgentType.CHAT_ANTHROPIC.value):
     prompt_preamble: str
