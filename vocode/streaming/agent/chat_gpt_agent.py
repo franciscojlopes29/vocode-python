@@ -117,7 +117,8 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfig]):
             "messages": messages,
             "max_tokens": self.agent_config.max_tokens,
             "temperature": self.agent_config.temperature,
-            "stop": "\n",
+            "stop": self.agent_config.stop_tokens,
+            "frequency_penalty": self.agent_config.frequency_penalty,
             "stream": True
         }
 
@@ -162,7 +163,7 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfig]):
                     return stream
                 except Exception as e1:
                     self.use_backup = True
-                    self.logger.debug(f"Error in Azure OpenAIclient: {type(e1).__name__}")
+                    self.logger.debug(f"Error in main OpenAI client: {type(e1).__name__}")
             if self.aclient_backup: 
                 self.logger.debug("Using backup client")
                 try:

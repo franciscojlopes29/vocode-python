@@ -72,6 +72,7 @@ class AzureOpenAIConfig(BaseModel):
 class AgentConfig(TypedModel, type=AgentType.BASE.value):
     initial_message: Optional[BaseMessage] = None
     interrupt_initial_message: Optional[bool] = False
+    initial_message_delay_seconds: Optional[float] = 0.3
     generate_responses: bool = True
     allowed_idle_time_seconds: Optional[float] = None
     allow_agent_to_be_cut_off: bool = True
@@ -103,6 +104,8 @@ class ChatGPTAgentConfig(AgentConfig, type=AgentType.CHAT_GPT.value):
     model_name: str = CHAT_GPT_AGENT_DEFAULT_MODEL_NAME
     temperature: float = LLM_AGENT_DEFAULT_TEMPERATURE
     max_tokens: int = LLM_AGENT_DEFAULT_MAX_TOKENS
+    stop_tokens: Optional[List[str]] = ["\n"]
+    frequency_penalty: float = 0.0
     cut_off_response: Optional[CutOffResponse] = None
     remove_exclamation: bool = False
     add_disfluencies: bool = False
