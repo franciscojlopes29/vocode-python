@@ -215,7 +215,93 @@ def replace_map_symbols(message, symbol_map):
     Returns:
     - str: The message with symbols replaced based on the provided symbol_map.
     """
-    import re
-
     pattern = re.compile("|".join(re.escape(key) for key in symbol_map.keys()))
     return pattern.sub(lambda match: symbol_map[match.group(0)], message)
+
+def replace_username_with_spelling_pattern(text) -> str:
+    """
+    Replace the username part of email addresses in the given text with a formatted pattern for the synthesized audio.
+
+    Args:
+        text (str): The input text containing email addresses.
+
+    Returns:
+        str: The text with replaced username parts according to the specified pattern.
+
+    Example:
+        >>> paragraph = "Contact me at john@example.com or support@company.com."
+        >>> result = replace_username_with_pattern(paragraph)
+        >>> print(result)
+        "Contact me at j - o - h - n @example.com or s - u - p - p - o - r - t @company.com."
+
+    The function uses a regular expression to identify email addresses in the input text. If email addresses are found,
+    it replaces the characters in the username part with a formatted pattern using the provided `format_char` function.
+
+    The `format_char` function is applied to each character in the username part to determine its formatted representation.
+    By default, it converts characters to lowercase, but you can customize this function based on specific formatting preferences.
+
+    If no email addresses are found in the input text, the function returns the original text without any replacements.
+    """
+    
+    def format_char(char):
+        return char.lower()
+    
+    def replace_chars(match):
+        username = match.group(1)
+        formatted_username = ' - '.join(format_char(char) for char in username)
+        return f'{formatted_username} @{match.group(2)}'
+    
+    email_pattern = r'\b([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Z|a-z]{2,})\b'
+
+    if re.search(email_pattern, text):
+        formatted_text = re.sub(email_pattern, replace_chars, text)
+        return formatted_text
+    else:
+        return text
+    
+def get_time_from_text(text: str) -> str:
+    """
+    Extracts time strings in the format "HH:MM AM/PM" from the given text.
+
+    Parameters:
+    - text (str): The input text from which to extract time strings.
+
+    Returns:
+    - List[str]: A list of time strings found in the input text.
+    """
+    pattern = re.compile(r'\b(?:1[0-2]|0?[1-9]):[0-5][0-9] (?:AM|PM)\b')
+    return pattern.findall(text)
+
+def format_time(time_string: str) -> str:
+    """
+    Formats a time string in the "HH:MM AM/PM" format to a more readable format.
+
+    Parameters:
+    - time_string (str): The time string to be formatted.
+
+    Returns:
+    - str: The formatted time string in the "HH MM AM/PM" format.
+    """
+    time, am_pm = time_string.split(" ")
+    hours, minutes = time.split(":")
+    minutes_part = "" if minutes == "00" else f" {minutes}"
+    modified_time = f"{hours}{minutes_part} {am_pm}"
+    return modified_time
+
+def format_time_in_text(text: str) -> str:
+    """
+    Replaces time strings in the format "HH:MM AM/PM" with a more readable format "HH MM AM/PM" in the given text.
+    If no time strings are found in the input text, the function returns the original text without any replacements.
+
+    Parameters:
+    - text (str): The input text in which to replace time strings.
+
+    Returns:
+    - str: The modified text with formatted time strings.
+    """
+    matches = get_time_from_text(text)
+    if matches:
+        for match in matches:
+            reformatted_time = format_time(match)
+            text = text.replace(match, reformatted_time)
+    return text

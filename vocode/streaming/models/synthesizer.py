@@ -1,5 +1,7 @@
 import os
 import __main__
+import hashlib
+from abc import abstractmethod
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
@@ -24,26 +26,43 @@ try:
     else:
         main_dir = os.path.dirname(__main__.__file__)
 
-    FILLER_AUDIO_PATH = os.path.join(
+    RANDOM_AUDIO_DIR = os.path.join(
         main_dir, "_submodules","vocode-python",
-        "vocode", "streaming", "synthesizer",
+        "vocode", "streaming", "synthesizer"
+    )
+
+    FILLER_AUDIO_PATH = os.path.join(
+        RANDOM_AUDIO_DIR,
         "filler_audio"
     )
     FOLLOW_UP_AUDIO_PATH = os.path.join(
-        main_dir, "_submodules", "vocode-python",
-        "vocode", "streaming", "synthesizer",
+        RANDOM_AUDIO_DIR,
         "follow_up_audio"
     )
+    BACKTRACK_AUDIO_PATH = os.path.join(
+        RANDOM_AUDIO_DIR,
+        "backtrack_audio"
+    )
+
     os.makedirs(FILLER_AUDIO_PATH, exist_ok=True)
     os.makedirs(FOLLOW_UP_AUDIO_PATH, exist_ok=True)
+    os.makedirs(BACKTRACK_AUDIO_PATH, exist_ok=True)
 except Exception as e:
     print(f"Error: {e}")
     FILLER_AUDIO_PATH = os.path.join(os.path.dirname(__file__), "filler_audio")
     FOLLOW_UP_AUDIO_PATH = os.path.join(os.path.dirname(__file__), "follow_up_audio")
+    BACKTRACK_AUDIO_PATH = os.path.join(os.path.dirname(__file__), "backtrack_audio")
 
 
 TYPING_NOISE_PATH = "%s/typing-noise.wav" % FILLER_AUDIO_PATH
 
+
+def __hash__(instance) -> str:
+    hash = hashlib.sha256()
+    hash.update(bytes(getattr(instance, "type"), "utf-8"))
+    for _, value in vars(instance).items():
+        hash.update(bytes(str(value), "utf-8"))
+    return hash.hexdigest()
 
 class SynthesizerType(str, Enum):
     BASE = "synthesizer_base"
@@ -79,10 +98,11 @@ class SynthesizerConfig(TypedModel, type=SynthesizerType.BASE.value):
     audio_encoding: AudioEncoding
     should_encode_as_wav: bool = False
     sentiment_config: Optional[SentimentConfig] = None
-    # added by bluberry
     initial_bot_sentiment: Optional[BotSentiment] = None
+    index_config: Optional[IndexConfig] = None
     base_filler_audio_path: str = FILLER_AUDIO_PATH
     base_follow_up_audio_path: str = FOLLOW_UP_AUDIO_PATH
+    base_backtrack_audio_path: str = BACKTRACK_AUDIO_PATH
 
     class Config:
         arbitrary_types_allowed = True
@@ -111,6 +131,12 @@ class SynthesizerConfig(TypedModel, type=SynthesizerType.BASE.value):
             audio_encoding=output_audio_config.audio_encoding,
             **kwargs
         )
+    
+    def __hash__(self) -> str:
+        return __hash__(self)
+    
+    def get_cache_key(self, text: str) -> str:
+        return self.__hash__() + text
 
 
 AZURE_SYNTHESIZER_DEFAULT_VOICE_NAME = "en-US-SteffanNeural"
@@ -122,7 +148,10 @@ class AzureSynthesizerConfig(SynthesizerConfig, type=SynthesizerType.AZURE.value
     voice_name: str = AZURE_SYNTHESIZER_DEFAULT_VOICE_NAME
     pitch: int = AZURE_SYNTHESIZER_DEFAULT_PITCH
     rate: int = AZURE_SYNTHESIZER_DEFAULT_RATE
-    language_code: str = "en-US"
+    language_code: str = "en-US"    
+
+    def get_cache_key(self, text: str) -> str:
+        return f"{SynthesizerType.AZURE.value}:{self.voice_name}:{self.pitch}:{self.rate}:{text}"
 
 
 DEFAULT_GOOGLE_LANGUAGE_CODE = "en-US"
@@ -153,8 +182,7 @@ class ElevenLabsSynthesizerConfig(
     stability: Optional[float]
     similarity_boost: Optional[float]
     model_id: Optional[str]
-    index_config: Optional[IndexConfig] = None
-    index_cache: Optional[Dict[str, Any]] = None
+    use_cache: bool = True
 
     @validator("voice_id")
     def set_name(cls, voice_id):
@@ -176,12 +204,10 @@ class ElevenLabsSynthesizerConfig(
         ):
             raise ValueError("optimize_streaming_latency must be between 0 and 4.")
         return optimize_streaming_latency
+    
+    def get_cache_key(self, text: str) -> str:
+        return f"{SynthesizerType.ELEVEN_LABS.value}:{self.model_id}:{self.voice_id}:{self.stability}:{self.similarity_boost}:{text}"
 
-    def get_no_cache_copy(self):
-        '''utility method to get copy without cache'''
-        state = self.copy()
-        state.index_cache = None
-        return state
 
 RIME_DEFAULT_SPEAKER = "young_male_unmarked-1"
 RIME_DEFAULT_SAMPLE_RATE = 22050
